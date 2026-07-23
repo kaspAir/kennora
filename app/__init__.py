@@ -1,4 +1,4 @@
-"""Applikations-Factory fuer Kennora.
+"""Applikations-Factory fuer kennora.
 
 Vorerst ein minimales, lauffaehiges Geruest: eine schlichte Startseite plus
 der Health-Endpoint, den Deploy und Watchdog abfragen. Die eigentliche Domaene
@@ -14,7 +14,7 @@ _LANDING = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kennora</title>
+  <title>kennora</title>
   <style>
     :root { color-scheme: light dark; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -27,7 +27,7 @@ _LANDING = """<!doctype html>
 </head>
 <body>
   <main>
-    <h1>Kennora</h1>
+    <h1>kennora</h1>
     <p>Wissen entsteht im Gespräch.</p>
     <p><code>v{{ version }}{% if sha %} · {{ sha }}{% endif %}</code></p>
   </main>

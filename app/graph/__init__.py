@@ -1,4 +1,4 @@
-"""Wissensgraph-Domäne von Kennora.
+"""Wissensgraph-Domäne von kennora.
 
 Ein einziges Substrat: **Aussagen** (Knoten) und **Kanten** (typisierte,
 werttragende Verbindungen). Daraus werden zwei Sichten projiziert – ein

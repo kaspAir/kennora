@@ -1,6 +1,6 @@
-# Kennora
+# kennora
 
-**Wissen entsteht im Gespräch.** Kennora ermöglicht Wissensübertragung durch
+**Wissen entsteht im Gespräch.** kennora ermöglicht Wissensübertragung durch
 Sprechen: Man redet frei (auch auf Schweizerdeutsch), das System strukturiert
 das Gesagte sauber – aber menschlich –, legt es ab und baut über viele
 Sitzungen hinweg darauf auf. Es stellt sehr zurückhaltend Zwischenfragen und

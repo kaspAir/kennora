@@ -264,7 +264,16 @@ def create_app():
         try:
             text = tr.transcribe(audio, mimetype=daten.get("mime", "audio/webm"))
         except Exception as e:  # noqa: BLE001
-            return jsonify(error=e.__class__.__name__)
+            # Konkret werden: Der STT-Dienst-Status + Antwort helfen bei der
+            # Diagnose (falscher Key/URL/Modell) viel mehr als der Klassenname.
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                try:
+                    detail = (resp.text or "")[:300]
+                except Exception:  # noqa: BLE001
+                    detail = ""
+                return jsonify(error=f"HTTP {resp.status_code} vom STT-Dienst: {detail}")
+            return jsonify(error=f"{e.__class__.__name__}: {e}")
         return jsonify(text=text)
 
     @app.post("/reset")

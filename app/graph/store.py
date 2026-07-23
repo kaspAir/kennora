@@ -82,6 +82,10 @@ class GraphStore(ABC):
     @abstractmethod
     def list_kanten(self, owner_id: str, typ: Optional[str] = None) -> List[Kante]: ...
 
+    @abstractmethod
+    def reset_owner(self, owner_id: str) -> None:
+        """Löscht ALLE Aussagen und Kanten einer Person (für dev-Testdaten)."""
+
 
 class SQLiteGraphStore(GraphStore):
     """SQLite-Implementierung – file-basiert, null Ops, ideal für dev."""
@@ -165,6 +169,11 @@ class SQLiteGraphStore(GraphStore):
                 (owner_id, typ),
             ).fetchall()
         return [_kante_aus_row(r) for r in rows]
+
+    def reset_owner(self, owner_id: str) -> None:
+        self._con.execute("DELETE FROM kanten WHERE owner_id = ?", (owner_id,))
+        self._con.execute("DELETE FROM aussagen WHERE owner_id = ?", (owner_id,))
+        self._con.commit()
 
     def close(self):
         self._con.close()

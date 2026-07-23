@@ -6,8 +6,10 @@ und Kantenvorschläge -> Graph -> Baum-Sicht.
 """
 import os
 
-from flask import (Flask, jsonify, redirect, render_template_string, request,
-                   send_from_directory)
+import base64
+
+from flask import (Flask, abort, jsonify, redirect, render_template_string,
+                   request, send_from_directory)
 
 from .version import GIT_SHA, __version__
 
@@ -70,6 +72,16 @@ _SITZUNG = """<!doctype html><html lang="de"><head>
     .netz li { margin:.35rem 0; }
     .typ { font-size:.75rem; letter-spacing:.05em; text-transform:uppercase;
       color:var(--marke); }
+    .werkzeuge { display:flex; align-items:center; gap:.55rem; flex-wrap:wrap; margin:.2rem 0 .6rem; }
+    .mic { background:transparent; color:var(--marke); border:1px solid var(--marke);
+      margin-top:0; padding:.45rem 1rem; }
+    .mic.rec { background:var(--marke); color:#fff; }
+    select#mic-select { font:inherit; padding:.42rem; border-radius:8px;
+      border:1px solid rgba(128,128,128,.35); background:transparent; color:var(--text); }
+    .voice-status { color:var(--text-leise); font-size:.85rem; }
+    .reset { margin-top:2.5rem; }
+    .reset button { background:transparent; color:#b23b3b; border:1px solid #b23b3b;
+      font-weight:600; border-radius:var(--radius); padding:.5rem 1.1rem; cursor:pointer; }
   </style>
 </head><body>
   <div class="seite">
@@ -78,7 +90,15 @@ _SITZUNG = """<!doctype html><html lang="de"><head>
     <p class="leise">Sprich oder schreib frei – in jeder Sprache. kennora ordnet im Hintergrund.</p>
 
     <form method="post" action="/sitzung">
-      <textarea name="text" placeholder="…" autofocus></textarea><br>
+      {% if stt_verfuegbar %}
+      <div class="werkzeuge">
+        <button type="button" class="mic" id="diktat-btn"
+                data-endpoint="/diktat" data-stt="1">🎤 Sprechen</button>
+        <select id="mic-select" style="display:none"></select>
+        <span class="voice-status" id="voice-status"></span>
+      </div>
+      {% endif %}
+      <textarea name="text" id="answer-text" placeholder="…" autofocus></textarea><br>
       <button type="submit">Ablegen</button>
     </form>
 
@@ -107,8 +127,16 @@ _SITZUNG = """<!doctype html><html lang="de"><head>
       </ul>
     {% endif %}
 
+    {% if dev %}
+      <form class="reset" method="post" action="/reset"
+            onsubmit="return confirm('Alle Testdaten dieser Sitzung wirklich löschen?');">
+        <button type="submit">🗑 Testdaten zurücksetzen — nur dev</button>
+      </form>
+    {% endif %}
+
     <p class="marke__fuss" style="margin-top:2.5rem"><a href="/">&larr; kennora</a></p>
   </div>
+  <script src="/static/js/diktat.js"></script>
 </body></html>"""
 
 # Fester Demo-Kontext für die Scheibe (noch keine Accounts/Auth).
@@ -118,6 +146,11 @@ _SITZUNG_ID = "dev"
 
 def _db_pfad():
     return os.environ.get("KENNORA_DB", "data/kennora.db")
+
+
+def _is_dev() -> bool:
+    """Nur die dev-Stufe (die Pipeline setzt APP_ENV je Stufe)."""
+    return os.environ.get("APP_ENV", "").strip().lower() == "dev"
 
 
 def _baum_html(knoten) -> str:
@@ -178,20 +211,23 @@ def create_app():
     def favicon():
         return send_from_directory(app.static_folder, "brand/favicon.ico")
 
-    @app.get("/sitzung")
-    def sitzung():
-        from . import llm
+    def _render_sitzung(rueckgabe="", zwischenfrage="", fehler=""):
+        from . import llm, stt
         from .graph import create_store
         store = create_store(_db_pfad())
         baum_html, netz = _sicht(store)
-        return render_template_string(_SITZUNG, zeichen=_ZEICHEN,
-                                      verfuegbar=llm.verfuegbar(),
-                                      baum_html=baum_html, netz=netz,
-                                      rueckgabe="", zwischenfrage="", fehler="")
+        return render_template_string(
+            _SITZUNG, zeichen=_ZEICHEN, verfuegbar=llm.verfuegbar(),
+            stt_verfuegbar=stt.transcriber().available, dev=_is_dev(),
+            baum_html=baum_html, netz=netz, rueckgabe=rueckgabe,
+            zwischenfrage=zwischenfrage, fehler=fehler)
+
+    @app.get("/sitzung")
+    def sitzung():
+        return _render_sitzung()
 
     @app.post("/sitzung")
     def sitzung_ablegen():
-        from . import llm
         from .graph import create_store
         from .session import ingest
 
@@ -205,11 +241,35 @@ def create_app():
                 zwischenfrage = ergebnis["zwischenfrage"]
             except Exception as e:  # noqa: BLE001 – dem Nutzer sichtbar machen
                 fehler = f"{e.__class__.__name__}: {e}"
-        baum_html, netz = _sicht(store)
-        return render_template_string(_SITZUNG, zeichen=_ZEICHEN,
-                                      verfuegbar=llm.verfuegbar(),
-                                      baum_html=baum_html, netz=netz,
-                                      rueckgabe=rueckgabe,
-                                      zwischenfrage=zwischenfrage, fehler=fehler)
+        return _render_sitzung(rueckgabe, zwischenfrage, fehler)
+
+    @app.post("/diktat")
+    def diktat():
+        from . import stt
+        tr = stt.transcriber()
+        if not tr.available:
+            return jsonify(error="STT ist nicht konfiguriert.")
+        daten = request.get_json(silent=True) or {}
+        b64 = daten.get("audio", "")
+        if not b64:
+            return jsonify(text="")
+        try:
+            audio = base64.b64decode(b64)
+        except Exception:  # noqa: BLE001
+            return jsonify(error="ungültiges Audio")
+        try:
+            text = tr.transcribe(audio, mimetype=daten.get("mime", "audio/webm"))
+        except Exception as e:  # noqa: BLE001
+            return jsonify(error=e.__class__.__name__)
+        return jsonify(text=text)
+
+    @app.post("/reset")
+    def reset():
+        # Hart auf dev begrenzt: auf test/int/prod existiert die Funktion nicht.
+        if not _is_dev():
+            abort(404)
+        from .graph import create_store
+        create_store(_db_pfad()).reset_owner(_OWNER)
+        return redirect("/sitzung")
 
     return app

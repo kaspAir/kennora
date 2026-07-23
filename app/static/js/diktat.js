@@ -11,9 +11,22 @@
   var statusEl = document.getElementById('voice-status');
   if (!btn || !textarea || btn.dataset.stt !== '1') return;
 
+  var statusEl0 = document.getElementById('voice-status');
   var canRecord = navigator.mediaDevices && navigator.mediaDevices.getUserMedia &&
                   typeof MediaRecorder !== 'undefined';
-  if (!canRecord) { btn.style.display = 'none'; return; }
+  if (!canRecord) {
+    // Häufigster Grund: unsicherer Kontext (http). Browser geben das Mikrofon
+    // nur über HTTPS (oder localhost) frei. Nicht stumm verstecken – erklären.
+    btn.disabled = true;
+    btn.style.opacity = '0.55';
+    btn.style.cursor = 'not-allowed';
+    if (statusEl0) {
+      statusEl0.textContent = (typeof window.isSecureContext !== 'undefined' && !window.isSecureContext)
+        ? 'Diktat braucht eine sichere Verbindung – öffne die Seite über https://'
+        : 'Dieser Browser unterstützt keine Aufnahme.';
+    }
+    return;
+  }
 
   var endpoint = btn.dataset.endpoint || '/diktat';
   var SEG_MS = 12000;

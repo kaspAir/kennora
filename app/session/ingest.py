@@ -65,6 +65,8 @@ Aufgabe ist, das Gesagte still zu strukturieren.
 Grundsätze:
 - ANTWORTE UND FORMULIERE IN DER SPRACHE, IN DER GESPROCHEN WURDE. Erkenne sie \
 und gib sie in `sprache` an. Übersetze NICHT.
+- SCHWEIZER RECHTSCHREIBUNG bei Deutsch: schreibe immer «ss» statt «ß» (das \
+Zeichen ß kommt nie vor).
 - Zerlege das Gesagte in einzelne, für sich stehende AUSSAGEN. Der `kernsatz` ist \
 sauber und menschlich – aber in der gesprochenen Sprache. Der `originalton` ist \
 ein wörtlicher Ausschnitt. Erfinde nichts dazu.
@@ -145,6 +147,20 @@ def _frage_takten(store: GraphStore, owner_id: str, frage: str) -> str:
     return ""
 
 
+def _nur_ss(obj):
+    """Schweizer Schreibweise erzwingen: «ß»→«ss» in allen Strings (rekursiv).
+
+    Deterministischer Garant, unabhängig davon, was das Modell ausgibt. In
+    anderen Sprachen unschädlich (dort kommt kein ß vor)."""
+    if isinstance(obj, str):
+        return obj.replace("ß", "ss").replace("ẞ", "SS")
+    if isinstance(obj, list):
+        return [_nur_ss(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _nur_ss(v) for k, v in obj.items()}
+    return obj
+
+
 def ingest(store: GraphStore, owner_id: str, sitzung: str, transkript: str,
            *, mandant_id=None, llm=None) -> dict:
     """Verarbeitet einen gesprochenen Beitrag additiv in den Graphen.
@@ -157,7 +173,7 @@ def ingest(store: GraphStore, owner_id: str, sitzung: str, transkript: str,
         return {"aussagen": [], "kanten": [], "rueckgabe": "", "zwischenfrage": "", "sprache": ""}
 
     kontext = _graph_kontext(store, owner_id)
-    daten = (llm or _llm_extract)(transkript, kontext)
+    daten = _nur_ss((llm or _llm_extract)(transkript, kontext))  # ß→ss (Schweiz)
     ergebnis = _anwenden(store, owner_id, sitzung, mandant_id, daten)
     # Mechanische Sperre: nicht nach jedem Beitrag fragen (der Mensch führt).
     ergebnis["zwischenfrage"] = _frage_takten(store, owner_id, ergebnis["zwischenfrage"])

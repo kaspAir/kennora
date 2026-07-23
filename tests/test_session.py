@@ -100,6 +100,21 @@ def test_leerer_beitrag_ist_geraeuschlos(store):
     assert res["aussagen"] == [] and res["rueckgabe"] == ""
 
 
+def test_schweizer_schreibweise_ss_statt_eszett(store):
+    def stub(t, k):
+        return {"sprache": "de", "aussagen": [
+            {"temp_id": "n", "kernsatz": "Die Strasse ist groß und weiß.",
+             "originalton": "grüßen", "grundsatz": "Maß halten.", "anschluss_an": ""}],
+            "kanten": [], "rueckgabe": "Das heißt viel.", "zwischenfrage": ""}
+
+    res = ingest(store, "demo", "s", "…", llm=stub)
+    a = res["aussagen"][0]
+    assert "ß" not in a.kernsatz and "ss" in a.kernsatz  # groß→gross, weiß→weiss
+    assert a.grundsatz == "Mass halten."
+    assert a.originalton == "grüssen"
+    assert res["rueckgabe"] == "Das heisst viel."
+
+
 def test_zwischenfrage_wird_getaktet_nicht_jeder_beitrag(store):
     # Modell will JEDES Mal fragen – die mechanische Sperre lässt das nicht zu.
     def immer_frage(t, k):

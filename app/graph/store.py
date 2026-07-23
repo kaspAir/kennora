@@ -8,6 +8,7 @@ etwas merkt.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
@@ -171,6 +172,9 @@ class SQLiteGraphStore(GraphStore):
 
 def create_store(pfad: str = "data/kennora.db") -> GraphStore:
     """Factory – heute SQLite. Hier wird später der Backend-Wechsel entschieden."""
+    ordner = os.path.dirname(pfad)
+    if ordner:
+        os.makedirs(ordner, exist_ok=True)
     return SQLiteGraphStore(pfad)
 
 

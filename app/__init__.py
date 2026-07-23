@@ -1,17 +1,17 @@
 """Applikations-Factory fuer kennora.
 
-Vorerst ein minimales, lauffaehiges Geruest: eine schlichte Startseite im
-Marken-Look plus der Health-Endpoint, den Deploy und Watchdog abfragen. Die
-eigentliche Domaene (sprachbasierte Wissens-Externalisierung: Aussagen,
-Verbindungen, zwei Sichten) kommt schrittweise hinzu.
+Startseite im Marken-Look, Health-Endpoint, und die erste vertikale Scheibe des
+Sitzungs-Loops: sprechen/tippen (in beliebiger Sprache) -> Aussagen, Grundsatz
+und Kantenvorschläge -> Graph -> Baum-Sicht.
 """
-from flask import (Flask, jsonify, redirect, render_template_string,
+import os
+
+from flask import (Flask, jsonify, redirect, render_template_string, request,
                    send_from_directory)
 
 from .version import GIT_SHA, __version__
 
-# Das Zeichen inline – so wirkt `currentColor` (Marke hell / Papier dunkel)
-# und es entsteht kein zusaetzlicher Request.
+# Das Zeichen inline – so wirkt `currentColor` (Marke hell / Papier dunkel).
 _ZEICHEN = """<svg viewBox="0 0 120 120" fill="none" stroke="currentColor"
      stroke-width="4" stroke-linecap="round" role="img" aria-label="kennora">
   <circle cx="60" cy="60" r="46"/>
@@ -20,32 +20,146 @@ _ZEICHEN = """<svg viewBox="0 0 120 120" fill="none" stroke="currentColor"
   <path d="M 71.12 25.76 A 36 36 0 0 1 93.83 47.69"/>
 </svg>"""
 
-_LANDING = """<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8">
+_KOPF = """  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>kennora</title>
-  <meta name="description" content="Wissen entsteht im Gespräch.">
   <meta name="theme-color" content="#4076B9">
   <link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/static/brand/favicon-32.png" sizes="32x32" type="image/png">
-  <link rel="icon" href="/static/brand/favicon-16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png">
   <link rel="manifest" href="/static/brand/site.webmanifest">
-  <link rel="stylesheet" href="/static/css/kennora.css">
-</head>
-<body>
+  <link rel="stylesheet" href="/static/css/kennora.css">"""
+
+_LANDING = """<!doctype html><html lang="de"><head>
+  <title>kennora</title>
+  <meta name="description" content="Wissen entsteht im Gespräch.">
+""" + _KOPF + """
+</head><body>
   <main class="huelle">
     <div class="marke">
       <span class="marke__zeichen">{{ zeichen|safe }}</span>
       <h1 class="marke__wortmarke">kennora</h1>
       <p class="marke__claim">Wissen entsteht im Gespräch.</p>
+      <p class="marke__fuss"><a href="/sitzung">Sprechen &rarr;</a></p>
       <p class="marke__fuss">v{{ version }}{% if sha %} <span class="warm">·</span> {{ sha }}{% endif %}</p>
     </div>
   </main>
-</body>
-</html>"""
+</body></html>"""
+
+_SITZUNG = """<!doctype html><html lang="de"><head>
+  <title>kennora — sprechen</title>
+""" + _KOPF + """
+  <style>
+    .seite { max-width: 760px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    .kopf { display:flex; align-items:center; gap:.6rem; margin-bottom:1.5rem; }
+    .kopf .z { width:34px; height:34px; color:var(--marke); }
+    .kopf h1 { font-family:var(--font-display); font-weight:500; font-size:1.7rem; margin:0; }
+    textarea { width:100%; min-height:120px; font:inherit; padding:.8rem;
+      border:1px solid rgba(128,128,128,.35); border-radius:var(--radius);
+      background:transparent; color:var(--text); resize:vertical; }
+    button { font:inherit; font-weight:600; color:#fff; background:var(--marke);
+      border:none; border-radius:var(--radius); padding:.6rem 1.3rem; margin-top:.7rem;
+      cursor:pointer; }
+    .rueck { background:rgba(199,154,110,.14); border-left:3px solid var(--warm);
+      padding:.8rem 1rem; border-radius:8px; margin:1.3rem 0; }
+    .frage { font-style:italic; color:var(--text-leise); margin-top:.4rem; }
+    .leise { color:var(--text-leise); font-size:.9rem; }
+    h2 { font-family:var(--font-display); font-weight:500; margin:2rem 0 .5rem; }
+    ul.baum { list-style:none; padding-left:1.1rem; border-left:1px solid rgba(128,128,128,.25); }
+    ul.baum li { margin:.3rem 0; }
+    .grundsatz { color:var(--warm); font-size:.85rem; }
+    .netz li { margin:.35rem 0; }
+    .typ { font-size:.75rem; letter-spacing:.05em; text-transform:uppercase;
+      color:var(--marke); }
+  </style>
+</head><body>
+  <div class="seite">
+    <div class="kopf"><span class="z">{{ zeichen|safe }}</span>
+      <h1>Erzähl mir, woran du gerade arbeitest.</h1></div>
+    <p class="leise">Sprich oder schreib frei – in jeder Sprache. kennora ordnet im Hintergrund.</p>
+
+    <form method="post" action="/sitzung">
+      <textarea name="text" placeholder="…" autofocus></textarea><br>
+      <button type="submit">Ablegen</button>
+    </form>
+
+    {% if not verfuegbar %}
+      <p class="rueck">⚠️ Es ist noch kein Modell konfiguriert (<code>ANTHROPIC_API_KEY</code>
+      oder <code>KENNORA_LLM_BASE_URL</code>). Ohne das kann kennora das Gesagte nicht
+      strukturieren – der Graph unten bleibt leer.</p>
+    {% endif %}
+    {% if fehler %}<p class="rueck">Es ist etwas schiefgelaufen: {{ fehler }}</p>{% endif %}
+    {% if rueckgabe %}
+      <div class="rueck">{{ rueckgabe }}
+        {% if zwischenfrage %}<div class="frage">{{ zwischenfrage }}</div>{% endif %}
+      </div>
+    {% endif %}
+
+    <h2>Dein Wissen — als Baum</h2>
+    {% if baum_html %}{{ baum_html|safe }}{% else %}<p class="leise">Noch nichts abgelegt.</p>{% endif %}
+
+    {% if netz %}
+      <h2>Verbindungen — im Netz</h2>
+      <ul class="netz">
+      {% for k in netz %}
+        <li><span class="typ">{{ k.typ }}</span> — {{ k.von_text }} ↔ {{ k.nach_text }}
+          {% if k.begruendung %}<span class="leise">({{ k.begruendung }})</span>{% endif %}</li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+
+    <p class="marke__fuss" style="margin-top:2.5rem"><a href="/">&larr; kennora</a></p>
+  </div>
+</body></html>"""
+
+# Fester Demo-Kontext für die Scheibe (noch keine Accounts/Auth).
+_OWNER = "demo"
+_SITZUNG_ID = "dev"
+
+
+def _db_pfad():
+    return os.environ.get("KENNORA_DB", "data/kennora.db")
+
+
+def _baum_html(knoten) -> str:
+    if not knoten:
+        return ""
+    teile = ["<ul class=\"baum\">"]
+    for k in knoten:
+        g = k.get("grundsatz")
+        gs = f' <span class="grundsatz">· {g}</span>' if g else ""
+        teile.append(f"<li>{_escape(k.get('kernsatz',''))}{gs}")
+        if k.get("kinder"):
+            teile.append(_baum_html(k["kinder"]))
+        teile.append("</li>")
+    teile.append("</ul>")
+    return "".join(teile)
+
+
+def _escape(s: str) -> str:
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def _sicht(store):
+    """Baum + Netz für die Anzeige aufbereiten (Kernsatz statt id in Kanten)."""
+    from .graph.projections import baum_sicht, netz_sicht
+
+    text = {a.id: a.kernsatz for a in store.list_aussagen(_OWNER)}
+
+    def _grundsatz_anreichern(knoten):
+        for k in knoten:
+            a = store.get_aussage(k["id"])
+            if a and a.grundsatz:
+                k["grundsatz"] = a.grundsatz
+            if k.get("kinder"):
+                _grundsatz_anreichern(k["kinder"])
+        return knoten
+
+    baum = _grundsatz_anreichern(baum_sicht(store, _OWNER))
+    netz = netz_sicht(store, _OWNER)["kanten"]
+    for k in netz:
+        k["von_text"] = text.get(k["von"], k["von"])
+        k["nach_text"] = text.get(k["nach"], k["nach"])
+    return _baum_html(baum), netz
 
 
 def create_app():
@@ -63,5 +177,39 @@ def create_app():
     @app.get("/favicon.ico")
     def favicon():
         return send_from_directory(app.static_folder, "brand/favicon.ico")
+
+    @app.get("/sitzung")
+    def sitzung():
+        from . import llm
+        from .graph import create_store
+        store = create_store(_db_pfad())
+        baum_html, netz = _sicht(store)
+        return render_template_string(_SITZUNG, zeichen=_ZEICHEN,
+                                      verfuegbar=llm.verfuegbar(),
+                                      baum_html=baum_html, netz=netz,
+                                      rueckgabe="", zwischenfrage="", fehler="")
+
+    @app.post("/sitzung")
+    def sitzung_ablegen():
+        from . import llm
+        from .graph import create_store
+        from .session import ingest
+
+        store = create_store(_db_pfad())
+        text = request.form.get("text", "")
+        rueckgabe = zwischenfrage = fehler = ""
+        if text.strip():
+            try:
+                ergebnis = ingest(store, _OWNER, _SITZUNG_ID, text)
+                rueckgabe = ergebnis["rueckgabe"]
+                zwischenfrage = ergebnis["zwischenfrage"]
+            except Exception as e:  # noqa: BLE001 – dem Nutzer sichtbar machen
+                fehler = f"{e.__class__.__name__}: {e}"
+        baum_html, netz = _sicht(store)
+        return render_template_string(_SITZUNG, zeichen=_ZEICHEN,
+                                      verfuegbar=llm.verfuegbar(),
+                                      baum_html=baum_html, netz=netz,
+                                      rueckgabe=rueckgabe,
+                                      zwischenfrage=zwischenfrage, fehler=fehler)
 
     return app

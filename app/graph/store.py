@@ -54,6 +54,12 @@ CREATE INDEX IF NOT EXISTS idx_kanten_owner   ON kanten(owner_id);
 CREATE INDEX IF NOT EXISTS idx_kanten_von     ON kanten(von_id);
 CREATE INDEX IF NOT EXISTS idx_kanten_nach    ON kanten(nach_id);
 CREATE INDEX IF NOT EXISTS idx_kanten_typ     ON kanten(typ);
+CREATE TABLE IF NOT EXISTS meta (
+    owner_id   TEXT NOT NULL,
+    schluessel TEXT NOT NULL,
+    wert       TEXT,
+    PRIMARY KEY (owner_id, schluessel)
+);
 """
 
 
@@ -89,6 +95,12 @@ class GraphStore(ABC):
     @abstractmethod
     def reset_owner(self, owner_id: str) -> None:
         """Löscht ALLE Aussagen und Kanten einer Person (für dev-Testdaten)."""
+
+    @abstractmethod
+    def get_meta(self, owner_id: str, schluessel: str, default=None): ...
+
+    @abstractmethod
+    def set_meta(self, owner_id: str, schluessel: str, wert: str) -> None: ...
 
 
 class SQLiteGraphStore(GraphStore):
@@ -181,6 +193,21 @@ class SQLiteGraphStore(GraphStore):
     def reset_owner(self, owner_id: str) -> None:
         self._con.execute("DELETE FROM kanten WHERE owner_id = ?", (owner_id,))
         self._con.execute("DELETE FROM aussagen WHERE owner_id = ?", (owner_id,))
+        self._con.execute("DELETE FROM meta WHERE owner_id = ?", (owner_id,))
+        self._con.commit()
+
+    def get_meta(self, owner_id: str, schluessel: str, default=None):
+        row = self._con.execute(
+            "SELECT wert FROM meta WHERE owner_id = ? AND schluessel = ?",
+            (owner_id, schluessel),
+        ).fetchone()
+        return row["wert"] if row else default
+
+    def set_meta(self, owner_id: str, schluessel: str, wert: str) -> None:
+        self._con.execute(
+            "INSERT OR REPLACE INTO meta (owner_id, schluessel, wert) VALUES (?,?,?)",
+            (owner_id, schluessel, wert),
+        )
         self._con.commit()
 
     def close(self):

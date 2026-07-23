@@ -98,3 +98,18 @@ def test_reim_landet_im_netz_nicht_im_baum(store):
 def test_leerer_beitrag_ist_geraeuschlos(store):
     res = ingest(store, "demo", "s1", "   ", llm=lambda t, k: {})
     assert res["aussagen"] == [] and res["rueckgabe"] == ""
+
+
+def test_zwischenfrage_wird_getaktet_nicht_jeder_beitrag(store):
+    # Modell will JEDES Mal fragen – die mechanische Sperre lässt das nicht zu.
+    def immer_frage(t, k):
+        return {"sprache": "de", "aussagen": [
+            {"temp_id": "n", "kernsatz": "Etwas.", "originalton": "",
+             "grundsatz": "", "anschluss_an": ""}],
+            "kanten": [], "rueckgabe": "ok", "zwischenfrage": "Warum ist das so?"}
+
+    gezeigt = [bool(ingest(store, "demo", "s", "…", llm=immer_frage)["zwischenfrage"])
+               for _ in range(5)]
+    # Der Mensch führt: keine Frage in den ersten Beiträgen, höchstens EINE in fünf.
+    assert gezeigt[0] is False
+    assert sum(gezeigt) <= 1

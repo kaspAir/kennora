@@ -88,9 +88,12 @@ An in DIESEM Aufruf neu angelegte Bereiche hängst du Aussagen per gehört-zu-Ka
 es einer bestehenden Aussage widerspricht – als Verständnisfrage behandeln, nicht \
 als Korrektur), führt-zu (Ursache→Folge), reimt-sich-auf (SELTEN: nur eine wirklich \
 nicht-offensichtliche Verbindung), unterscheidet-sich-durch.
-- `zwischenfrage`: höchstens EINE, und nur bei echter Lücke in einer Kausalkette, \
-einem Widerspruch, oder einer ertragreichen Gabelung. Im Zweifel "". Nie ein \
-Formular, nie Pflichtfelder.
+- `zwischenfrage`: FAST IMMER LEER (""). DER MENSCH FÜHRT über sein eigenes Wissen – \
+nicht du. Du bist Zuhörer; deine Zurückhaltung IST das Produkt. Frag NICHT, um das \
+Gespräch zu lenken oder Vollständigkeit zu erzwingen. Nur ganz selten, wenn eine \
+echte, wichtige Lücke offen bleibt, die das freie Weitererzählen spürbar bereichern \
+würde – und selbst dann im Zweifel lieber "". Nie ein Formular, nie Pflichtfelder. \
+(Zusätzlich sorgt das System dafür, dass nicht nach jedem Beitrag gefragt wird.)
 - `rueckgabe`: ein bis zwei warme Sätze, die zeigen, was angekommen ist und wo \
 etwas gewachsen ist – in der gesprochenen Sprache."""
 
@@ -119,6 +122,29 @@ def _llm_extract(transkript: str, kontext: str) -> dict:
     return llm.strukturiert(_SYSTEM, prompt, EXTRAKT_SCHEMA)
 
 
+# Mechanische Zurückhaltung: mindestens so viele Beiträge zwischen zwei
+# Zwischenfragen. Der Mensch führt – kennora fragt höchstens selten.
+_FRAGE_ABSTAND = 3
+
+
+def _frage_takten(store: GraphStore, owner_id: str, frage: str) -> str:
+    """Lässt eine Zwischenfrage nur durch, wenn lange keine kam – sonst "".
+
+    Zählt Beiträge seit der letzten GEZEIGTEN Frage; erst ab _FRAGE_ABSTAND darf
+    wieder eine erscheinen. So kann das (je Aufruf gedächtnislose) Modell nicht
+    nach jedem Beitrag fragen – die Führung bleibt beim Menschen.
+    """
+    try:
+        seit = int(store.get_meta(owner_id, "beitraege_seit_frage", "0") or "0")
+    except (TypeError, ValueError):
+        seit = 0
+    if frage and seit >= _FRAGE_ABSTAND:
+        store.set_meta(owner_id, "beitraege_seit_frage", "0")
+        return frage
+    store.set_meta(owner_id, "beitraege_seit_frage", str(seit + 1))
+    return ""
+
+
 def ingest(store: GraphStore, owner_id: str, sitzung: str, transkript: str,
            *, mandant_id=None, llm=None) -> dict:
     """Verarbeitet einen gesprochenen Beitrag additiv in den Graphen.
@@ -132,7 +158,10 @@ def ingest(store: GraphStore, owner_id: str, sitzung: str, transkript: str,
 
     kontext = _graph_kontext(store, owner_id)
     daten = (llm or _llm_extract)(transkript, kontext)
-    return _anwenden(store, owner_id, sitzung, mandant_id, daten)
+    ergebnis = _anwenden(store, owner_id, sitzung, mandant_id, daten)
+    # Mechanische Sperre: nicht nach jedem Beitrag fragen (der Mensch führt).
+    ergebnis["zwischenfrage"] = _frage_takten(store, owner_id, ergebnis["zwischenfrage"])
+    return ergebnis
 
 
 def _anwenden(store, owner_id, sitzung, mandant_id, daten: dict) -> dict:

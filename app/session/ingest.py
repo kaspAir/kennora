@@ -70,9 +70,20 @@ sauber und menschlich – aber in der gesprochenen Sprache. Der `originalton` is
 ein wörtlicher Ausschnitt. Erfinde nichts dazu.
 - Ziehe wo möglich den `grundsatz` heraus: das allgemeine Prinzip hinter einer \
 Aussage (z. B. «Man lernt nur, wenn man selbst handeln darf»). Sonst "".
-- Wachse ADDITIV: Wenn eine neue Aussage inhaltlich unter eine BESTEHENDE gehört, \
-setze deren id in `anschluss_an` (das erzeugt eine gehört-zu-Kante). Baue \
-bestehende Struktur NICHT um.
+- BEWAHRE RICHTUNG UND ABSICHT der Person. Dreh Ursache und Wirkung NICHT um. \
+Beispiel: «Der Mensch macht Kultur, Kultur ist der Akt, etwas Bedeutung zu geben» \
+darf NICHT zu «Kultur ist relevant, wenn sie dem Menschen Bedeutung gibt» werden – \
+das ist die plausibel klingende Umkehrung, aber nicht das Gemeinte. Kernsatz und \
+Grundsatz müssen die Denkrichtung des Sprechers treffen.
+- BAUE EIN THEMATISCHES GERÜST (wie ein Inhaltsverzeichnis): Erkenne die wenigen, \
+breiten Themen/Bereiche, über die jemand spricht (z. B. «Kultur», «Technik», \
+«Anthropologie»), und lege dafür kurze Bereichs-Aussagen an, unter die du die \
+konkreten Aussagen hängst. Wenige, stabile Bereiche – nicht für jeden Satz einen \
+neuen. So wird der Baum lesbar und übergabetauglich.
+- Wachse ADDITIV: Bestehende Bereiche/Aussagen aus der Kontextliste WIEDERVERWENDEN \
+(via `anschluss_an` = deren id), nie duplizieren, bestehende Struktur nicht umbauen. \
+An in DIESEM Aufruf neu angelegte Bereiche hängst du Aussagen per gehört-zu-Kante \
+(temp_id → temp_id des Bereichs).
 - Kanten sparsam und nur wenn echt: gehört-zu (Hierarchie), widerspricht (nur wenn \
 es einer bestehenden Aussage widerspricht – als Verständnisfrage behandeln, nicht \
 als Korrektur), führt-zu (Ursache→Folge), reimt-sich-auf (SELTEN: nur eine wirklich \

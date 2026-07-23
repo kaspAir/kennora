@@ -41,7 +41,7 @@ _LANDING = """<!doctype html><html lang="de"><head>
       <span class="marke__zeichen">{{ zeichen|safe }}</span>
       <h1 class="marke__wortmarke">kennora</h1>
       <p class="marke__claim">Wissen entsteht im Gespräch.</p>
-      <p class="marke__fuss"><a href="/sitzung">Sprechen &rarr;</a></p>
+      <p style="margin-top:1.4rem"><a class="btn btn--primary" href="/sitzung">Sprechen</a></p>
       <p class="marke__fuss">v{{ version }}{% if sha %} <span class="warm">·</span> {{ sha }}{% endif %}</p>
     </div>
   </main>
@@ -102,10 +102,14 @@ _SITZUNG = """<!doctype html><html lang="de"><head>
       <button type="submit">Ablegen</button>
     </form>
 
-    {% if not verfuegbar %}
-      <p class="rueck">⚠️ Es ist noch kein Modell konfiguriert (<code>ANTHROPIC_API_KEY</code>
-      oder <code>KENNORA_LLM_BASE_URL</code>). Ohne das kann kennora das Gesagte nicht
-      strukturieren – der Graph unten bleibt leer.</p>
+    {% if not verfuegbar or not stt_verfuegbar %}
+      <p class="rueck">
+        {% if not verfuegbar %}⚠️ Noch kein Modell konfiguriert
+        (<code>ANTHROPIC_API_KEY</code> oder <code>KENNORA_LLM_BASE_URL</code>) –
+        ohne das kann kennora das Gesagte nicht strukturieren, der Graph bleibt leer.{% endif %}
+        {% if not stt_verfuegbar %}{% if not verfuegbar %}<br><br>{% endif %}🎤 Diktat ist
+        noch nicht konfiguriert (<code>STT_API_KEY</code>) – bis dahin bitte tippen.{% endif %}
+      </p>
     {% endif %}
     {% if fehler %}<p class="rueck">Es ist etwas schiefgelaufen: {{ fehler }}</p>{% endif %}
     {% if rueckgabe %}
@@ -134,7 +138,7 @@ _SITZUNG = """<!doctype html><html lang="de"><head>
       </form>
     {% endif %}
 
-    <p class="marke__fuss" style="margin-top:2.5rem"><a href="/">&larr; kennora</a></p>
+    <p style="margin-top:2.5rem"><a class="btn btn--ghost" href="/">&larr; kennora</a></p>
   </div>
   <script src="/static/js/diktat.js"></script>
 </body></html>"""

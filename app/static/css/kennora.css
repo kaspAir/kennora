@@ -106,3 +106,24 @@ body {
   color: var(--text-leise);
 }
 .marke__fuss .warm { color: var(--warm); }
+
+/* --- Buttons (Links, die wie Buttons aussehen) ------------------------------ */
+.btn {
+  display: inline-block;
+  font-family: var(--font-text);
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: var(--radius);
+  padding: 0.62rem 1.5rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: filter 0.15s ease, background 0.15s ease;
+}
+.btn:hover { filter: brightness(1.06); }
+.btn--primary { background: var(--marke); color: #fff; }
+.btn--ghost {
+  background: transparent;
+  color: var(--marke);
+  border-color: color-mix(in oklab, var(--marke) 45%, transparent);
+}
+.btn--ghost:hover { background: color-mix(in oklab, var(--marke) 8%, transparent); }

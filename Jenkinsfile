@@ -1,0 +1,159 @@
+// Kennora – CI/CD-Pipeline
+//
+// Vier separate Pipeline-Jobs (kein Multibranch), je einer pro Branch/Stufe:
+// "5.1 kennora dev/test/int/main". Jeder Job checkt seinen Branch aus; die
+// when{}-Bedingungen matchen den JOB_NAME (z. B. "kennora dev" enthaelt 'dev')
+// und feuern die passende Deploy-Stufe:
+//
+//   develop     → Tests + Deploy dev   (dev.kennora.ch  → Port 8050)
+//   test        → Tests + Deploy test  (test.kennora.ch → Port 8051)
+//   integration → Tests + Deploy int   (int.kennora.ch  → Port 8052)
+//   main        → Tests + Deploy prod  (kennora.ch      → Port 8053)
+//
+// Promotion streng sequenziell: develop → test → integration → main.
+// Nie Stufen ueberspringen.
+//
+// Voraussetzungen Jenkins:
+//   - SSH-Credential 'hermespia-deploy' (privater Key fuer
+//     u7031y_kaspar@83.228.238.194 – derselbe Infomaniak-Host wie die anderen
+//     Produkte). Bei Bedarf spaeter auf 'kennora-deploy' umstellen.
+//   - Docker + Docker-Pipeline-Plugin (fuer die Regressionstests)
+//
+// Voraussetzungen Server (einmalig pro Umgebung):
+//   - Subdomain-Web-Root mit proxy.php (richtiger Port) + .htaccess
+//     -> werden vom Deploy automatisch platziert, sofern der Web-Root existiert
+//   - optional .env im App-Verzeichnis (Secrets)
+
+def deploy(String subdir, String branch, String port, String workers, String appEnv, String webhost) {
+    sshagent(credentials: ['hermespia-deploy']) {
+        sh """
+            ssh -o StrictHostKeyChecking=no ${DEPLOY_HOST} '
+                set -e
+                APP=\$HOME/${subdir}
+                if [ ! -d "\$APP/.git" ]; then git clone ${REPO_URL} "\$APP"; fi
+                cd "\$APP"
+                git remote set-url origin ${REPO_URL}
+                git fetch origin
+                git reset --hard origin/${branch}
+                if [ -x .venv/bin/pip ]; then
+                    . .venv/bin/activate
+                else
+                    rm -rf .venv
+                    python3 -m venv .venv --without-pip
+                    . .venv/bin/activate
+                    PYVER=\$(ls .venv/lib | sed s/python//)
+                    curl -sSf https://bootstrap.pypa.io/pip/\$PYVER/get-pip.py -o get-pip.py 2>/dev/null || curl -sSf https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+                    python get-pip.py -q
+                    rm -f get-pip.py
+                fi
+                python -m pip install -r requirements.txt -q
+                mkdir -p data logs tmp
+                WEBROOT=\$HOME/sites/${webhost}
+                if [ -d "\$WEBROOT" ]; then
+                    cp deploy/proxy.php  "\$WEBROOT/proxy.php"
+                    cp deploy/.htaccess  "\$WEBROOT/.htaccess"
+                    sed -i "s#127.0.0.1:8050#127.0.0.1:${port}#" "\$WEBROOT/proxy.php"
+                    echo "Proxy aktualisiert: \$WEBROOT -> 127.0.0.1:${port}"
+                else
+                    echo "WARN: Web-Root \$WEBROOT fehlt - Subdomain anlegen; Proxy nicht platziert."
+                fi
+                PID=\$APP/tmp/gunicorn.pid
+                [ -f "\$PID" ] && kill \$(cat "\$PID") 2>/dev/null || true
+                sleep 1
+                set -a; [ -f .env ] && . .env; set +a
+                export APP_ENV=${appEnv}
+                nohup gunicorn run:app \\
+                    --bind 127.0.0.1:${port} --workers ${workers} --timeout 120 \\
+                    --access-logfile logs/access.log \\
+                    --error-logfile logs/error.log > /dev/null 2>&1 &
+                echo \$! > "\$PID"
+                KA="\$APP/deploy/keepalive.sh"
+                chmod +x "\$KA" 2>/dev/null || true
+                if command -v crontab >/dev/null 2>&1; then
+                    ( crontab -l 2>/dev/null | grep -vF "\$KA"; \\
+                      echo "@reboot \$KA ${port} ${workers} ${appEnv}"; \\
+                      echo "*/3 * * * * \$KA ${port} ${workers} ${appEnv}" ) | crontab - 2>/dev/null \\
+                      && echo "Watchdog-Cron aktiv (@reboot + alle 3 Min)" || echo "WARN: crontab nicht setzbar - Cron ggf. im Infomaniak-Manager anlegen."
+                else
+                    echo "WARN: kein crontab verfuegbar - Watchdog-Cron im Infomaniak-Manager anlegen (keepalive.sh)."
+                fi
+                sleep 2 && curl -sf http://127.0.0.1:${port}/healthz > /dev/null && echo "OK: ${subdir} laeuft auf ${port}"
+            '
+        """
+    }
+}
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout(time: 20, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        DEPLOY_HOST = 'u7031y_kaspar@83.228.238.194'
+        REPO_URL    = 'https://github.com/kaspAir/kennora'
+    }
+
+    stages {
+
+        stage('Regressionstests') {
+            steps {
+                script {
+                    // Getestet wird auf der Python-Version des Zielhosts (3.9),
+                    // nicht auf einer neueren – sonst faellt eine Unvertraeglichkeit
+                    // erst beim Deploy auf.
+                    docker.image('python:3.9-slim').inside('-u root') {
+                        sh '''
+                            python --version
+                            pip install --no-cache-dir -r requirements.txt -r tests/requirements.txt
+                            mkdir -p reports
+                            python -m pytest -q --junitxml=reports/junit.xml
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    junit 'reports/junit.xml'
+                }
+            }
+        }
+
+        stage('Deploy dev') {
+            when { expression { env.JOB_NAME.contains('dev') } }
+            steps {
+                script { deploy('kennora-dev', 'develop', '8050', '1', 'dev', 'dev.kennora.ch') }
+            }
+        }
+
+        stage('Deploy test') {
+            when { expression { env.JOB_NAME.contains('test') } }
+            steps {
+                script { deploy('kennora-test', 'test', '8051', '1', 'test', 'test.kennora.ch') }
+            }
+        }
+
+        stage('Deploy int') {
+            when { expression { env.JOB_NAME.contains('int') } }
+            steps {
+                script { deploy('kennora-int', 'integration', '8052', '1', 'int', 'int.kennora.ch') }
+            }
+        }
+
+        stage('Deploy prod') {
+            when { expression { env.JOB_NAME.contains('main') } }
+            steps {
+                script { deploy('kennora', 'main', '8053', '2', 'prod', 'kennora.ch') }
+            }
+        }
+    }
+
+    post {
+        success { echo 'Pipeline gruen.' }
+        failure { echo 'Pipeline rot – siehe Stage-Logs und Testbericht.' }
+    }
+}

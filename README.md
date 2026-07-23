@@ -51,6 +51,18 @@ Vier Umgebungen auf dem geteilten Infomaniak-Host, je Branch ein Jenkins-Job
 | `integration` | int      | int.kennora.ch  | 8052 |
 | `main`        | prod     | kennora.ch      | 8053 |
 
+### Versionierung
+
+Jeder Commit auf `develop` zählt die Patch-Version in `VERSION` automatisch
++0.0.1 hoch (Git-`pre-commit`-Hook). Nach einem frischen Clone einmalig
+aktivieren:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+### Betrieb
+
 Gunicorn bindet lokal auf den Stufen-Port; ein PHP-Reverse-Proxy
 (`deploy/proxy.php` + `deploy/.htaccess`) reicht die Subdomain weiter. Ein
 Watchdog-Cron (`deploy/keepalive.sh`) hält den Prozess am Leben. Details siehe

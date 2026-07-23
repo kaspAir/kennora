@@ -1,0 +1,28 @@
+#!/bin/sh
+# kennora: Auf dem Branch 'develop' bei JEDEM Commit die Patch-Version +0.0.1.
+# Aktiv via  git config core.hooksPath .githooks  (einmalig pro Clone).
+
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+[ "$branch" = "develop" ] || exit 0
+[ -f VERSION ] || exit 0
+
+cur=$(tr -d ' \t\r\n' < VERSION)
+case "$cur" in
+  *.*.*) ;;
+  *) exit 0 ;;   # unerwartetes Format -> nicht anfassen
+esac
+
+major=${cur%%.*}
+rest=${cur#*.}
+minor=${rest%%.*}
+patch=${rest#*.}
+
+# nur reine Zahlen erhoehen
+case "$patch" in
+  ''|*[!0-9]*) exit 0 ;;
+esac
+
+new="$major.$minor.$((patch + 1))"
+printf '%s\n' "$new" > VERSION
+git add VERSION
+echo "kennora: Version $cur -> $new"

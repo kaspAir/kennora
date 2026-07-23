@@ -82,6 +82,24 @@ _SITZUNG = """<!doctype html><html lang="de"><head>
     .reset { margin-top:2.5rem; }
     .reset button { background:transparent; color:#b23b3b; border:1px solid #b23b3b;
       font-weight:600; border-radius:var(--radius); padding:.5rem 1.1rem; cursor:pointer; }
+    ul.baum li.knoten { position:relative; }
+    .reife { font-size:.8rem; margin-right:.15rem; }
+    .reife.best { color:var(--marke); }
+    .reife.bearb { color:var(--warm); }
+    li.reife-roh > .ktext { opacity:.72; }
+    .aktionen { opacity:0; margin-left:.45rem; white-space:nowrap; transition:opacity .12s; }
+    li.knoten:hover > .aktionen { opacity:1; }
+    .aktionen form { display:inline; }
+    .mini { display:inline-block; border:none; background:transparent; cursor:pointer;
+      font-size:.9rem; line-height:1; padding:.1rem .28rem; color:var(--text-leise);
+      text-decoration:none; border-radius:5px; }
+    .mini:hover { color:var(--marke); background:color-mix(in oklab, var(--marke) 10%, transparent); }
+    /* Bearbeiten-Seite */
+    .bearb-form label { display:block; margin:1rem 0 .3rem; font-weight:600; }
+    .bearb-form input { width:100%; font:inherit; padding:.6rem;
+      border:1px solid rgba(128,128,128,.35); border-radius:var(--radius);
+      background:transparent; color:var(--text); }
+    .bearb-form .knoepfe { display:flex; gap:.6rem; align-items:center; margin-top:1.2rem; }
   </style>
 </head><body>
   <div class="seite">
@@ -143,9 +161,56 @@ _SITZUNG = """<!doctype html><html lang="de"><head>
   <script src="/static/js/diktat.js"></script>
 </body></html>"""
 
+_BEARBEITEN = """<!doctype html><html lang="de"><head>
+  <title>kennora — überarbeiten</title>
+""" + _KOPF + """
+  <style>
+    .seite { max-width:640px; margin:0 auto; padding:2rem 1.25rem 4rem; }
+    .kopf { display:flex; align-items:center; gap:.6rem; margin-bottom:.6rem; }
+    .kopf .z { width:32px; height:32px; color:var(--marke); }
+    .kopf h1 { font-family:var(--font-display); font-weight:500; font-size:1.5rem; margin:0; }
+    textarea { width:100%; min-height:110px; font:inherit; padding:.7rem;
+      border:1px solid rgba(128,128,128,.35); border-radius:var(--radius);
+      background:transparent; color:var(--text); resize:vertical; }
+    label { display:block; margin:1.1rem 0 .3rem; font-weight:600; }
+    input { width:100%; font:inherit; padding:.6rem;
+      border:1px solid rgba(128,128,128,.35); border-radius:var(--radius);
+      background:transparent; color:var(--text); }
+    .leise { color:var(--text-leise); font-size:.9rem; }
+    .original { color:var(--text-leise); font-size:.9rem; margin-top:.8rem; font-style:italic; }
+    .knoepfe { display:flex; gap:.6rem; align-items:center; margin-top:1.3rem; }
+    .knoepfe button { font:inherit; font-weight:600; color:#fff; background:var(--marke);
+      border:none; border-radius:var(--radius); padding:.6rem 1.4rem; cursor:pointer; }
+  </style>
+</head><body>
+  <div class="seite">
+    <div class="kopf"><span class="z">{{ zeichen|safe }}</span><h1>Aussage überarbeiten</h1></div>
+    <p class="leise">Deine Korrektur wird die massgebliche Fassung – der Reifegrad wechselt auf «überarbeitet».</p>
+    <form method="post" action="/aussage/{{ a.id }}">
+      <label>Kernsatz</label>
+      <textarea name="kernsatz" autofocus>{{ a.kernsatz }}</textarea>
+      <label>Grundsatz <span class="leise" style="font-weight:400">— das Prinzip dahinter</span></label>
+      <input name="grundsatz" value="{{ a.grundsatz or '' }}" placeholder="(optional)">
+      {% if a.originalton %}<p class="original">Originalton (bleibt erhalten): „{{ a.originalton }}"</p>{% endif %}
+      <div class="knoepfe">
+        <button type="submit">Speichern</button>
+        <a class="btn btn--ghost" href="/sitzung">Abbrechen</a>
+      </div>
+    </form>
+  </div>
+</body></html>"""
+
 # Fester Demo-Kontext für die Scheibe (noch keine Accounts/Auth).
 _OWNER = "demo"
 _SITZUNG_ID = "dev"
+
+
+def _demo_aussage(store, aussage_id):
+    """Lädt eine Aussage der Demo-Person – oder 404 (schützt fremde Daten)."""
+    a = store.get_aussage(aussage_id)
+    if not a or a.owner_id != _OWNER:
+        abort(404)
+    return a
 
 
 def _db_pfad():
@@ -157,14 +222,38 @@ def _is_dev() -> bool:
     return os.environ.get("APP_ENV", "").strip().lower() == "dev"
 
 
+# Reifegrad → (CSS-Slug ohne Umlaut, sichtbarer Marker)
+_REIFE = {
+    "hingeworfen":  ("roh",   '<span class="reife" title="hingeworfen">○</span>'),
+    "bestätigt":    ("best",  '<span class="reife best" title="bestätigt">✓</span>'),
+    "überarbeitet": ("bearb", '<span class="reife bearb" title="überarbeitet – von dir">✎</span>'),
+}
+
+
 def _baum_html(knoten) -> str:
     if not knoten:
         return ""
     teile = ["<ul class=\"baum\">"]
     for k in knoten:
+        aid = _escape(k.get("id", ""))
+        rg = k.get("reifegrad", "hingeworfen")
+        slug, marker = _REIFE.get(rg, _REIFE["hingeworfen"])
         g = k.get("grundsatz")
-        gs = f' <span class="grundsatz">· {g}</span>' if g else ""
-        teile.append(f"<li>{_escape(k.get('kernsatz',''))}{gs}")
+        gs = f' <span class="grundsatz">· {_escape(g)}</span>' if g else ""
+        aktionen = (
+            '<span class="aktionen">'
+            f'<form method="post" action="/aussage/{aid}/bestaetigen">'
+            '<button class="mini" title="Bestätigen">✓</button></form>'
+            f'<a class="mini" href="/aussage/{aid}/bearbeiten" title="Überarbeiten">✎</a>'
+            f'<form method="post" action="/aussage/{aid}/loeschen" '
+            "onsubmit=\"return confirm('Diese Aussage löschen?');\">"
+            '<button class="mini" title="Löschen">🗑</button></form>'
+            '</span>'
+        )
+        teile.append(
+            f'<li class="knoten reife-{slug}">{marker} '
+            f'<span class="ktext">{_escape(k.get("kernsatz", ""))}</span>{gs}{aktionen}'
+        )
         if k.get("kinder"):
             teile.append(_baum_html(k["kinder"]))
         teile.append("</li>")
@@ -283,6 +372,42 @@ def create_app():
             abort(404)
         from .graph import create_store
         create_store(_db_pfad()).reset_owner(_OWNER)
+        return redirect("/sitzung")
+
+    @app.post("/aussage/<aussage_id>/bestaetigen")
+    def aussage_bestaetigen(aussage_id):
+        from .graph import create_store
+        store = create_store(_db_pfad())
+        a = _demo_aussage(store, aussage_id)
+        a.reifegrad = "bestätigt"      # Nicken: das Rohe wird bestätigt
+        store.update_aussage(a)
+        return redirect("/sitzung")
+
+    @app.get("/aussage/<aussage_id>/bearbeiten")
+    def aussage_bearbeiten(aussage_id):
+        from .graph import create_store
+        a = _demo_aussage(create_store(_db_pfad()), aussage_id)
+        return render_template_string(_BEARBEITEN, zeichen=_ZEICHEN, a=a)
+
+    @app.post("/aussage/<aussage_id>")
+    def aussage_speichern(aussage_id):
+        from .graph import create_store
+        store = create_store(_db_pfad())
+        a = _demo_aussage(store, aussage_id)
+        kern = request.form.get("kernsatz", "").strip()
+        if kern:
+            a.kernsatz = kern
+        a.grundsatz = request.form.get("grundsatz", "").strip() or None
+        a.reifegrad = "überarbeitet"   # die Korrektur der Person ist massgeblich
+        store.update_aussage(a)
+        return redirect("/sitzung")
+
+    @app.post("/aussage/<aussage_id>/loeschen")
+    def aussage_loeschen(aussage_id):
+        from .graph import create_store
+        store = create_store(_db_pfad())
+        _demo_aussage(store, aussage_id)   # Owner-Schutz
+        store.delete_aussage(aussage_id)
         return redirect("/sitzung")
 
     return app

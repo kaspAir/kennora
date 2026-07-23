@@ -77,6 +77,10 @@ class GraphStore(ABC):
     def list_aussagen(self, owner_id: str) -> List[Aussage]: ...
 
     @abstractmethod
+    def delete_aussage(self, aussage_id: str) -> None:
+        """Löscht eine Aussage (Kanten daran fallen per Cascade mit)."""
+
+    @abstractmethod
     def add_kante(self, k: Kante) -> Kante: ...
 
     @abstractmethod
@@ -140,6 +144,10 @@ class SQLiteGraphStore(GraphStore):
             (owner_id,),
         ).fetchall()
         return [_aussage_aus_row(r) for r in rows]
+
+    def delete_aussage(self, aussage_id: str) -> None:
+        self._con.execute("DELETE FROM aussagen WHERE id = ?", (aussage_id,))
+        self._con.commit()
 
     # -- Kanten ----------------------------------------------------------------
 

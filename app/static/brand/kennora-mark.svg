@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" role="img" aria-label="kennora">
+  <!-- Ring / Schicht / offener Kern (der Mensch bleibt offen) -->
+  <circle cx="60" cy="60" r="46"/>
+  <circle cx="60" cy="60" r="27"/>
+  <circle cx="60" cy="60" r="11"/>
+  <!-- Klangbogen: R36, ~52°, oben rechts, feste Lage -->
+  <path d="M 71.12 25.76 A 36 36 0 0 1 93.83 47.69"/>
+</svg>

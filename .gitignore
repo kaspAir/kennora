@@ -8,3 +8,7 @@ logs/
 tmp/
 reports/
 .pytest_cache/
+
+# interner Styleguide – nie ins oeffentliche Repo
+kennora_Styleguide.pdf
+*.pdf

@@ -87,7 +87,7 @@ _SITZUNG = """<!doctype html><html lang="de"><head>
     .reife.best { color:var(--marke); }
     .reife.bearb { color:var(--warm); }
     li.reife-roh > .ktext { opacity:.72; }
-    .aktionen { opacity:0; margin-left:.45rem; white-space:nowrap; transition:opacity .12s; }
+    .aktionen { opacity:.5; margin-left:.45rem; white-space:nowrap; transition:opacity .12s; }
     li.knoten:hover > .aktionen { opacity:1; }
     .aktionen form { display:inline; }
     .mini { display:inline-block; border:none; background:transparent; cursor:pointer;
